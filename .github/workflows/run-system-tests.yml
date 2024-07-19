@@ -1,40 +1,44 @@
-name: Run System Tests
-on:
-  push:
-    branches:
-      - main
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   run-system-tests:
-    name: 'Java ${{ matrix.java.version}}'
-    runs-on: ubuntu-latest
     if: ${{ github.repository == 'spring-projects/spring-boot' }}
+    name: Java ${{ matrix.java.version}}
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      name: Check Out Code
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Prepare Gradle Build
+      uses: ./.github/actions/prepare-gradle-build
+      with:
+        develocity-access-key: ${{ secrets.GRADLE_ENTERPRISE_SECRET_ACCESS_KEY }}
+        java-toolchain: ${{ matrix.java.toolchain }}
+        java-version: ${{ matrix.java.version }}
+    - continue-on-error: true
+      id: run-system-tests
+      name: Run System Tests
+      run: ./gradlew systemTest
+      shell: bash
+    - continue-on-error: true
+      if: always()
+      name: Send Notification
+      uses: ./.github/actions/send-notification
+      with:
+        build-scan-url: ${{ steps.run-system-tests.outputs.build-scan-url }}
+        run-name: ${{ format('{0} | System Tests | Java {1}', github.ref_name, matrix.java.version)
+          }}
+        status: ${{ job.status }}
+        webhook-url: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
     strategy:
       matrix:
         java:
-          - version: 17
-            toolchain: false
-          - version: 21
-            toolchain: true
-    steps:
-      - name: Check Out Code
-        uses: actions/checkout@v4
-      - name: Prepare Gradle Build
-        uses: ./.github/actions/prepare-gradle-build
-        with:
-          develocity-access-key: ${{ secrets.GRADLE_ENTERPRISE_SECRET_ACCESS_KEY }}
-          java-version: ${{ matrix.java.version }}
-          java-toolchain: ${{ matrix.java.toolchain }}
-      - name: Run System Tests
-        id: run-system-tests
-        shell: bash
-        run: ./gradlew systemTest
-      - name: Send Notification
-        uses: ./.github/actions/send-notification
-        if: always()
-        with:
-          webhook-url: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
-          status: ${{ job.status }}
-          build-scan-url: ${{ steps.run-system-tests.outputs.build-scan-url }}
-          run-name: ${{ format('{0} | System Tests | Java {1}', github.ref_name, matrix.java.version) }}
+        - toolchain: false
+          version: 17
+        - toolchain: true
+          version: 21
+name: Run System Tests
+on:
+  repository_dispatch:
+    types: trigger-ga___run-system-tests.yml
